@@ -41,26 +41,43 @@ public final class DiscardServer {
         // Configure SSL.
         final SslContext sslCtx;
         if (SSL) {
+            //如果在jvm参数里配置了需要进行ssl加密的话则生成服务端的签名证书
             SelfSignedCertificate ssc = new SelfSignedCertificate();
+            //根据签名证书的证书和私钥来构建ssl上下文
             sslCtx = SslContextBuilder.forServer(ssc.certificate(), ssc.privateKey()).build();
         } else {
             sslCtx = null;
         }
 
+        /*Netty内部都是通过线程在处理各种数据，EventLoopGroup就是用来管理调度他们的
+         *nThreads：内部线程数，如果为0，就取默认值，通常我们会设置为处理器个数*2 @link MultithreadEventLoopGroup 
+         */
         EventLoopGroup bossGroup = new NioEventLoopGroup(1);
         EventLoopGroup workerGroup = new NioEventLoopGroup();
         try {
+            /**
+             * 创建Server
+             */
             ServerBootstrap b = new ServerBootstrap();
+            /**
+             * 将工作组绑定入Server ,bossGroup:Accept  workGroup:client
+             */
             b.group(bossGroup, workerGroup)
-             .channel(NioServerSocketChannel.class)
-             .handler(new LoggingHandler(LogLevel.INFO))
-             .childHandler(new ChannelInitializer<SocketChannel>() {
+             .channel(NioServerSocketChannel.class)//创建指定Class的channel实例
+             .handler(new LoggingHandler(LogLevel.INFO))//接受每一个请求的处理器
+             .childHandler(new ChannelInitializer<SocketChannel>() {//接受建立连接通道的请求的处理器
                  @Override
                  public void initChannel(SocketChannel ch) {
                      ChannelPipeline p = ch.pipeline();
+                     /**
+                      * 如果设置了ssl加密则要先对管道中传入的数据进行解密
+                      */
                      if (sslCtx != null) {
                          p.addLast(sslCtx.newHandler(ch.alloc()));
                      }
+                     /**
+                      * 然后将自己的处理器加入处理器链
+                      */
                      p.addLast(new DiscardServerHandler());
                  }
              });
